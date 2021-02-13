@@ -1,247 +1,149 @@
-bl_info = {
-    "name": "Face counter",
-    "description": "Counts the amount of face each object has and prints it into a message box",
-    "author": "mirkan1",
-    "category": "3D View",
-    "version": (0, 0, 1),
-    "blender": (2, 80, 0),
-    "location": "View3D > Object",
-    "warning": "This addon is still in development.",
-    "wiki_url": "",
-    "category": "Object" }
+####  #####  ####    ####      #####  #####      #      ####    ######
+#     #   #  #   #   #         #   #  #         # #     #   #     #
+#     #   #  #    #  ####      #   #  ####     #####    ####      #
+#     #   #  #   #   #         #   #  #       #     #   #   #     #
+####  #####  ####    ####      #####  #      #       #  #    #    #
+
+import bpy, os
+from bpy.types import WindowManager as wm
+from bpy.types import Panel, Operator
+from bpy.props import *
+
+# Resize then save (main function)
+def resize_then_save(prefix, width, save, output, overwrite, all, cleanup):
+    images = []
+    if all == 'All images':
+        images = bpy.data.images[:]
+    else:
+        if bpy.context.area.spaces.active.image:
+            images.append(bpy.context.area.spaces.active.image)
+    if len(images) > 0:
+        for img in images:            
+            x, y = img.size
+            height = width * y / x
+            if height > 0 and width > 0:
+                if not overwrite:
+                    new_img = img.copy()
+                    new_img.name = get_img_name(prefix + img.name)
+                else: new_img = img
+                if new_img:
+                    new_img.scale(width, height)
+                    if save:
+                        new_img.save_render(os.path.join(output, new_img.name))
+                        if cleanup and not overwrite:
+                            bpy.data.images.remove(new_img, True) 
+                            
+# Get image name (Better than .00x)
+def get_img_name(name):
+    if not bpy.data.images.get(name):
+        return name
+    i = 1
+    while bpy.data.images.get(str(i) + name):
+        i += 1
+    return str(i) + name                             
+ 
+# Check if everything is OK                            
+def ready():
+    ready = True
+    w_man = bpy.context.window_manager    
+    width = w_man.ris_width    
+    image = bpy.context.area.spaces.active.image
     
-import bpy
-arr = []
-# for i in bpy.data.materials: i
+    if w_man.ris_all_images == 'Active image':    
+        if image:
+            x, y = image.size
+            height = width * y / x            
+            if width < 1 or height < 1:                
+                ready = False
+        else: ready = False
+    else:
+        if len(bpy.data.images[:]) < 1:
+            ready = False    
+    if w_man.ris_save :
+        if not os.path.exists(w_man.ris_output):
+            ready = False  
+            
+    return ready         
+                                
+            
+# Resize then Save
+class ResizeThenSave(Operator):
+    bl_idname = "resize_images.resize_then_save"
+    bl_label = "Resize"
+    bl_description = "Resize the image(s), then save (Optional)."
 
-
-def take_second(elem):
-    return elem[1]
-
-def fece_count():
-    objects = bpy.data.scenes[0].objects
-    arr = []
-    for i in objects:
-        data = i.data
-        try:
-            arr.append([f'{data.name}', len(data.polygons)])
-            # print(f'object {data.name} has {len(data.polygons)} faces')
-        except AttributeError:
-            pass
-    arr = sorted(arr, key=take_second, reverse=True)
-    arr = [f'{i[0]}: {i[1]}' for i in arr]
-    return arr
-
-#for i in objects:
-#    data = i.data
-#    for j in data.materials:
-#        print(j)
-#        arr.append(j)    
-
-def ShowMessageBox(messages, title = "Message Box", icon = 'INFO'):
+    def execute(self, context):
+        w_man = context.window_manager
+        prefix = w_man.ris_prefix
+        width = w_man.ris_width
+        save = w_man.ris_save
+        output = w_man.ris_output
+        overwrite = w_man.ris_overwrite
+        all = w_man.ris_all_images
+        cleanup = w_man.ris_cleanup
+        
+        resize_then_save(prefix, width, save, output, overwrite, all, cleanup)
+        return {'FINISHED'}    
+    
+# The UI
+class ResizeImages(Panel):
+    bl_space_type = "IMAGE_EDITOR"
+    bl_region_type = "UI"    
+    bl_label = "Resize"
+            
     def draw(self, context):
-        for n in messages:
-            self.layout.label(text=n)
-    bpy.context.window_manager.popup_menu(draw, title = title, icon = icon)
-
-
-class Qury_Props(bpy.types.PropertyGroup):
-    pr_enums: bpy.props.EnumProperty(
-        name="Texture Resolation", 
-        description="Pick desired resoliton to resize", 
-        items = [
-            ("8192", "8192", "Decrease texture resolation to 8192 pixels"),
-            ("4096", "4096", "Decrease texture resolation to 4096 pixels"),
-            ("2048", "2048", "Decrease texture resolation to 2048 pixels"),
-            ("1024", "1024", "Decrease texture resolation to 1024 pixels"),
-            ("512", "512", "Decrease texture resolation to 512 pixels"),
-            ("256", "256", "Decrease texture resolation to 256 pixels"),
-            ("128", "128", "Decrease texture resolation to 128 pixels"),
-            ("64", "64", "Decrease texture resolation to 64 pixels"),
-        ]
-    )
-    
-## Property group for holding previous image data
-class ImageDataCopy(bpy.types.PropertyGroup):
-    object : bpy.props.PointerProperty(type=bpy.types.Image)
-
-    def mama(self):
-        print("mama")
-        return True
-    
-    def copy(self):
-        self.object = self.id_data.copy()
-        self.name = self.object.name
-        return self.object
-
-    def add(self, ob):
-        print("add", self, ob)
-        self.object = ob
-        self.name = ob.name
-        return self.object
-    
-#GUI
-class MessageBoxOperator(bpy.types.Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'Face count'
-    bl_options = {'HIDE_HEADER'}
-    bl_idname = "ui.show_message_box"
-    bl_label = "Minimal Operator"
-
-    def draw(self, context):
+        w_man = context.window_manager
+        width = w_man.ris_width        
+        active_img = context.area.spaces.active.image          
         layout = self.layout
-        props = bpy.context.scene.Qury_Props
+        col = layout.column()
+        col.prop(w_man, 'ris_all_images', text = '')
+        col.prop(w_man, 'ris_width')
+        if  w_man.ris_all_images == 'Active image':
+            if active_img:
+                x, y = active_img.size            
+                height = width * y / x
+                col.label(text = 'Height: ' + str(int(height)), icon = 'INFO')
+            else: col.label(text = 'No active image!', icon = 'ERROR')
+        else: 
+            if len(bpy.data.images[:]) == 0:
+                col.label(text = 'Please, load  some images.', icon = 'ERROR')        
+        col.prop(w_man, 'ris_overwrite', icon = 'IMAGE_RGB_ALPHA')
+        if not w_man.ris_overwrite:
+            col.prop(w_man, 'ris_prefix')
+        col.prop(w_man, 'ris_save', icon  = 'EXTERNAL_DATA')
+        if w_man.ris_save:
+            col.prop(w_man, 'ris_output')
+            if not os.path.exists(w_man.ris_output):
+                col.label(text = 'Please, select a valid output', icon = 'ERROR')               
+            if not w_man.ris_overwrite:
+                col.prop(w_man, 'ris_cleanup')
+        col = layout.column()
+        col.enabled = ready()
+        col.operator("resize_images.resize_then_save", icon = 'IMAGE_COL')
         
-        # EXECUTE BUTTON
-        row = layout.row()
-        #row.label(text="Face Count")
-        row.operator("object.ratio_save_button", text="Face Counts")
-        
-        # Image Resise
-        row = layout.row()
-        row = layout.row()
-        row.label(text="Texture Limit")
-        row.prop(props, "pr_enums", text="")
-        row = layout.row()
-        row.label(text="Resize Function")
-        row.operator("object.image_resise", text="Resize")
-        
-        # Previos Image Get
-        #row.label(text="Previous Size")
-        row = layout.row()
-        row = layout.row()
-        row.operator("object.return_prev_image", text="Get Previous Texture Back")
-                
-# EXECUTER BUTTON               
-class executeButton(bpy.types.Operator):
-    bl_idname = "object.ratio_save_button"
-    bl_label = "Ratio and savebutton functions"
-
-    def execute(self, context):
-        arr = fece_count()
-        ShowMessageBox(arr) 
-        return {'FINISHED'}  
-
-# Image Resise               
-class ImageResise(bpy.types.Operator):
-    bl_idname = "object.image_resise"
-    bl_label = "resize an image and save its value for a further call"
-
-    def execute(self, context):
-        props = bpy.context.scene.Qury_Props
-        res_ = int(props.pr_enums)
-        object = bpy.context.active_object
-        objects = bpy.context.selected_objects
-        for j in objects:
-            mat = j.active_material
-            try:
-                node_tree = mat.node_tree
-                nodes = node_tree.nodes
-            except (NameError, AttributeError):
-                 # NoneType error
-                pass
-            # 'bpy.types.ShaderNodeTexImage'
-            for i in nodes: 
-                tur = str(type(i))
-                if tur == "<class 'bpy.types.ShaderNodeTexImage'>":
-                    image = i.image
-                    if image.generated_width + image.generated_height  < res_ + res_:
-                        self.report({"ERROR"}, "Selected object(s)'s dimension is lesser than given texture size")
-                        return {'CANCELLED'} 
-                    if len(i.image.copies) < 1:
-                        # creating same image inside the image if not exist
-                        i.image.copies.add().copy()
-                    image.generated_width = res_
-                    image.generated_height = res_
-                    image.scale(res_, res_)
-        return {'FINISHED'}  
-    
-class GetPreviousImage_OP(bpy.types.Operator):
-    bl_idname = "object.return_prev_image"
-    bl_label = "checks if image is previously worked, if so changing its values back to the previous one"
-    
-    def execute(self, context):
-        #objects = bpy.data.scenes[0].objects
-        object = bpy.context.active_object
-        objects = bpy.context.selected_objects
-        for j in objects:        
-            mat = j.active_material
-            try:
-                node_tree = mat.node_tree
-                nodes = node_tree.nodes
-            except (NameError, AttributeError):
-                # NoneType error
-                pass
-            # 'bpy.types.ShaderNodeTexImage'
-            for i in nodes: 
-                tur = str(type(i))
-                if tur == "<class 'bpy.types.ShaderNodeTexImage'>":
-                    image = i.image
-                    try:
-                        prev_data = i.image.copies[-1].object.copy()
-                        prev_data.pack()
-                        prev_data.save()
-                        split_ = i.image.copies[-1].object.name[:-4].split(".")
-                        path_ = prev_data.filepath.split("\\")
-                        path_ = "\\".join(path_[:-1]+[""])
-                        prev_data.filepath = path_ + split_[0] + "_." + split_[1]
-                        prev_data.save()
-                        i.image = prev_data
-                        i.image.copies.clear()
-                        # print(len(i.image.copies))
-                        # bpy.data.images.remove(image)
-                    except IndexError:
-                        # wrong object selected // pass it
-                        pass
-        return {'FINISHED'} 
-    
-classes = (
-    executeButton,
-    MessageBoxOperator,
-    ImageResise,
-    ImageDataCopy,
-    GetPreviousImage_OP,
-    Qury_Props,
-)
-
-addon_keymaps = [] 
-
 def register():
-    from bpy.utils import register_class
-    # register_class(MessageBoxOperator)
-    for cls in classes:
-        register_class(cls)
-    wm = bpy.context.window_manager
-    kc = wm.keyconfigs.addon
-    if kc:
-        km = wm.keyconfigs.addon.keymaps.new(name='Object Mode', space_type='EMPTY')
-        kmi = km.keymap_items.new(executeButton.bl_idname, 'T', 'PRESS', ctrl=True, shift=True)
-        addon_keymaps.append((km, kmi))
-
-        km = wm.keyconfigs.addon.keymaps.new(name='Screen Editing', space_type='EMPTY')
-        kmi = km.keymap_items.new(executeButton.bl_idname, 'Q', 'PRESS', ctrl=True, shift=True)
-        addon_keymaps.append((km, kmi))
-    # Register QueryProps
-    bpy.types.Image.copies = bpy.props.CollectionProperty(type=ImageDataCopy)
-    bpy.types.Scene.Qury_Props = bpy.props.PointerProperty(type=Qury_Props)
-
+    bpy.utils.register_module(__name__)
+    wm.ris_prefix = StringProperty(name = 'Prefix', description = 'Prefix.')
+    wm.ris_output = StringProperty(name = 'Output', description = 'Output folder.', subtype='DIR_PATH')
+    wm.ris_width = IntProperty(name = 'Width', default = 512, min = 1, max = 20000, description = 'Width of the image.')
+    wm.ris_save = BoolProperty(name = 'Save', default = False, description = 'Save the resized image(s) to the output folder.')
+    wm.ris_overwrite = BoolProperty(name = 'Overwrite', default = False, description = 'Overwrite the original image by the resized image.')
+    wm.ris_cleanup = BoolProperty(name = 'Cleanup', default = False, description = 'Remove the resized image after saving it.')
+    wm.ris_all_images = EnumProperty(name = 'All images',
+                                     items = (('Active image','Active image','Resize the active image.'),('All images','All images','Resize all the images')),
+                                     description = 'Resize the active image or all the images.')
+    
+    
 def unregister():
-    from bpy.utils import unregister_class
-    for cls in classes:
-        unregister_class(cls)
-    del(bpy.types.Image.copies)
-
+    bpy.utils.unregister_module(__name__) 
+    del wm.ris_prefix   
+    del wm.ris_output 
+    del wm.ris_width   
+    del wm.ris_save
+    del wm.ris_overwrite
+    del wm.ris_cleanup
+    del wm.ris_all_images
+              
 if __name__ == "__main__":
-    register();
-    
-    
-# img = bpy.data.images["Tiles48_diffuse_xtm.jpg"]
-# img.scale(128, 128)
-# img.save()
-# img.scale(12800, 12800)
-# img.save()
-# img = bpy.data.images["Tiles47_diffuse_xtm.jpg"]
-# img.scale[0] # X
-# img.scale[1] # Y
-# save those values then use for backup
+    register()    
