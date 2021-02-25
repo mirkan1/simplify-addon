@@ -106,14 +106,16 @@ class MessageBoxOperator(bpy.types.Panel):
         row = layout.row()
         row.label(text="Resize Function")
         row = layout.row()
-        row.operator("object.image_resise", text="Selected Resize")
-        row.operator("object.image_non_selected_resise", text="Non-selected Resize")
+        row.operator("object.image_resise", text="Selected")
+        row.operator("object.image_non_selected_resise", text="Non-selected")
         
         # Previos Image Get
         #row.label(text="Previous Size")
         row = layout.row()
+        row.label(text="Get Previous Textures Back")
         row = layout.row()
-        row.operator("object.return_prev_image", text="Get Previous Texture Back")
+        row.operator("object.return_prev_image", text="Selected Back")
+        row.operator("object.return_non_selected_prev_image", text="Non-selected Back")
                 
 # EXECUTER BUTTON               
 class executeButton(bpy.types.Operator):
@@ -204,6 +206,50 @@ class Non_Selected_ImageResise(bpy.types.Operator):
                     image.scale(res_, res_)
         return {'FINISHED'}  
 
+class GetNonSelectedPreviousImage_OP(bpy.types.Operator):
+    bl_idname = "object.return_non_selected_prev_image"
+    bl_label = "checks if image is previously worked, if so changing its values back to the previous one"
+    
+    def execute(self, context):
+        # object = bpy.context.active_object
+        objects = bpy.data.objects
+        selected_objects = bpy.context.selected_objects
+        arr = []
+        for i in objects:
+            if i not in selected_objects:
+                arr.append(i)
+        objects = arr
+        for j in objects:        
+            mat = j.active_material
+            try:
+                node_tree = mat.node_tree
+                nodes = node_tree.nodes
+            except (NameError, AttributeError):
+                # NoneType error
+                continue
+            # 'bpy.types.ShaderNodeTexImage'
+            for i in nodes: 
+                tur = str(type(i))
+                if tur == "<class 'bpy.types.ShaderNodeTexImage'>":
+                    image = i.image
+                    try:
+                        prev_data = i.image.copies[-1].object.copy()
+                        prev_data.pack()
+                        prev_data.save()
+                        split_ = i.image.copies[-1].object.name[:-4].split(".")
+                        path_ = prev_data.filepath.split("\\")
+                        path_ = "\\".join(path_[:-1]+[""])
+                        prev_data.filepath = path_ + split_[0] + "_." + split_[1]
+                        prev_data.save()
+                        i.image = prev_data
+                        i.image.copies.clear()
+                        # print(len(i.image.copies))
+                        # bpy.data.images.remove(image)
+                    except IndexError:
+                        # wrong object selected // pass it
+                        pass
+        return {'FINISHED'} 
+    
 class GetPreviousImage_OP(bpy.types.Operator):
     bl_idname = "object.return_prev_image"
     bl_label = "checks if image is previously worked, if so changing its values back to the previous one"
@@ -212,7 +258,7 @@ class GetPreviousImage_OP(bpy.types.Operator):
         #objects = bpy.data.scenes[0].objects
         object = bpy.context.active_object
         objects = bpy.context.selected_objects
-        objects = bpy.data.objects
+        # objects = bpy.data.objects
         for j in objects:        
             mat = j.active_material
             try:
@@ -248,10 +294,11 @@ classes = (
     executeButton,
     MessageBoxOperator,
     ImageResise,
+    Non_Selected_ImageResise,
     ImageDataCopy,
     GetPreviousImage_OP,
+    GetNonSelectedPreviousImage_OP,
     Qury_Props,
-    Non_Selected_ImageResise,
 )
 
 addon_keymaps = [] 
